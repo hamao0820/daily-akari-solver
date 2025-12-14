@@ -1,8 +1,7 @@
-package main
+package detect
 
 import (
 	"embed"
-	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -63,8 +62,11 @@ func init() {
 	lol.Close()
 }
 
-func main() {
-	img := gocv.IMRead("board3.png", gocv.IMReadColor)
+func Detect(buf []byte) string {
+	img, err := gocv.IMDecode(buf, gocv.IMReadColor)
+	if err != nil {
+		panic(err)
+	}
 	if img.Empty() {
 		panic("画像の読み込みに失敗しました")
 	}
@@ -226,7 +228,7 @@ func main() {
 		result += "\n"
 	}
 
-	fmt.Println(result)
+	return result
 }
 
 func isBlock(cell gocv.Mat) bool {

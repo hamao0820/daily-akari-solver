@@ -2,18 +2,35 @@ package main
 
 import (
 	"encoding/base64"
-	"os"
+	"flag"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/hamao0820/daily-akari-solver/detect"
 )
 
+var headless bool
+var no int
+
 func main() {
-	browser := rod.New().MustConnect()
+	// コマンドライン引数
+	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
+	flag.IntVar(&no, "no", 0, "Puzzle No.")
+	flag.Parse()
+
+	u := launcher.New().Headless(headless).MustLaunch()
+	browser := rod.New().ControlURL(u).MustConnect()
 	defer browser.MustClose()
 
-	page := browser.MustPage("https://dailyakari.com/")
+	pageURL := "https://dailyakari.com"
+	if no > 0 {
+		pageURL, _ = url.JoinPath(pageURL, "archive", strconv.Itoa(no))
+	}
+	page := browser.MustPage(pageURL)
 	defer page.MustClose()
 
 	if err := page.WaitLoad(); err != nil {
@@ -69,13 +86,6 @@ func main() {
 		panic(err)
 	}
 
-	file, err := os.Create("board.png")
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	if _, err := file.Write(data); err != nil {
-		panic(err)
-	}
+	result := detect.Detect(data)
+	println(result)
 }
