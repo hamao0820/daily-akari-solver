@@ -185,15 +185,10 @@ func Detect(buf []byte) string {
 	// 完全なグリッドを生成
 	completeGrid, rows, cols := generateCompleteGrid(centers, correctSize, correctSize, correctSize)
 
-	detected := img.Clone()
-	for _, p := range completeGrid {
-		gocv.Circle(&detected, p, 5, color.RGBA{0, 0, 255, 0}, -1)
-	}
-
 	// 各中心の周囲のセルを描画
 	cells := []gocv.Mat{}
 	for _, center := range completeGrid {
-		rect := image.Rect(center.X-correctSize/2, center.Y-correctSize/2, center.X+correctSize/2, center.Y+correctSize/2)
+		rect := image.Rect(center.X-correctSize/2+5, center.Y-correctSize/2+5, center.X+correctSize/2-5, center.Y+correctSize/2-5)
 		cell := img.Region(rect)
 		cells = append(cells, cell)
 	}
