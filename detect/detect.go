@@ -188,7 +188,7 @@ func Detect(buf []byte) string {
 	// 各中心の周囲のセルを描画
 	cells := []gocv.Mat{}
 	for _, center := range completeGrid {
-		rect := image.Rect(center.X-correctSize/2+5, center.Y-correctSize/2+5, center.X+correctSize/2-5, center.Y+correctSize/2-5)
+		rect := image.Rect(center.X-correctSize/2+correctSize/10, center.Y-correctSize/2+correctSize/10, center.X+correctSize/2-correctSize/10, center.Y+correctSize/2-correctSize/10)
 		cell := img.Region(rect)
 		cells = append(cells, cell)
 	}
