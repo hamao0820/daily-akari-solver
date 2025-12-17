@@ -3,11 +3,9 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -15,8 +13,8 @@ import (
 )
 
 type requestBody struct {
-	ImageDataBase64 string `json:"image_data_base64"`
-	ProblemNo       int    `json:"problem_no"`
+	ImageDataBase64 string     `json:"image_data_base64"`
+	ProblemData     [][]string `json:"problem_data"`
 }
 
 func main() {
@@ -53,20 +51,7 @@ func main() {
 			return
 		}
 
-		grid, err := getProblemData(data.ProblemNo)
-		if err != nil {
-			log.Println("Error fetching problem data:", err)
-			http.Error(w, "Failed to fetch problem data", http.StatusInternalServerError)
-			return
-		}
-
-		if len(grid) == 0 || len(grid[0]) == 0 {
-			log.Println("Error: problem data is empty")
-			http.Error(w, "Problem data is empty", http.StatusInternalServerError)
-			return
-		}
-
-		cells, err := detect.DetectCells(imageData, len(grid), len(grid[0]))
+		cells, err := detect.DetectCells(imageData, len(data.ProblemData), len(data.ProblemData[0]))
 		if err != nil {
 			log.Println("Error detecting cell positions:", err)
 			http.Error(w, "Failed to detect cell positions", http.StatusInternalServerError)
@@ -92,47 +77,4 @@ func main() {
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		panic(err)
 	}
-}
-
-func getProblemData(problemNo int) ([][]string, error) {
-	var url string
-	if problemNo == -1 {
-		url = "https://dailyakari.com/dailypuzzle"
-	} else {
-		url = fmt.Sprintf("https://dailyakari.com/archivepuzzle?number=%d", problemNo)
-	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return [][]string{}, fmt.Errorf("failed to fetch problem data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return [][]string{}, fmt.Errorf("failed to read problem data: %w", err)
-	}
-
-	type apiResponse struct {
-		LevelData string `json:"levelData"`
-	}
-
-	var responseData apiResponse
-	if err := json.Unmarshal(body, &responseData); err != nil {
-		return [][]string{}, fmt.Errorf("failed to unmarshal problem data: %w", err)
-	}
-
-	grid := parseLevelData(responseData.LevelData)
-	return grid, nil
-}
-
-func parseLevelData(str string) [][]string {
-	var grid [][]string
-	// \n\nより手前がグリッドデータ
-	dataParts := strings.SplitN(str, "\n\n", 2)[0]
-
-	rows := strings.Split(dataParts, "\n")
-	for _, row := range rows {
-		grid = append(grid, strings.Split(row, " "))
-	}
-	return grid
 }
