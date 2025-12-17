@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"log"
 
 	"gocv.io/x/gocv"
 )
 
 func DetectCells(buf []byte, rows, cols int) ([]Cell, error) {
-	log.Println(rows, cols)
 	img, err := gocv.IMDecode(buf, gocv.IMReadColor)
 	if err != nil {
 		return []Cell{}, err
@@ -20,8 +18,6 @@ func DetectCells(buf []byte, rows, cols int) ([]Cell, error) {
 		return []Cell{}, errors.New("画像のデコードに失敗しました")
 	}
 	defer img.Close()
-
-	fmt.Println("loaded image", img.Rows(), img.Cols())
 
 	contours := findContours(img)
 	defer contours.Close()
