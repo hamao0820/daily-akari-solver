@@ -2,90 +2,137 @@ package main
 
 import (
 	"encoding/base64"
-	"flag"
-	"net/url"
-	"strconv"
-	"time"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
 
-	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/launcher"
-	"github.com/go-rod/rod/lib/proto"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/hamao0820/daily-akari-solver/detect"
 )
 
-var headless bool
-var no int
+type requestBody struct {
+	ImageDataBase64 string `json:"image_data_base64"`
+	ProblemNo       int    `json:"problem_no"`
+}
 
 func main() {
-	// コマンドライン引数
-	flag.BoolVar(&headless, "headless", true, "Run browser in headless mode")
-	flag.IntVar(&no, "no", 0, "Puzzle No.")
-	flag.Parse()
+	router := chi.NewRouter()
 
-	u := launcher.New().Headless(headless).MustLaunch()
-	browser := rod.New().ControlURL(u).MustConnect()
-	defer browser.MustClose()
+	router.Use(middleware.Logger)
 
-	pageURL := "https://dailyakari.com"
-	if no > 0 {
-		pageURL, _ = url.JoinPath(pageURL, "archive", strconv.Itoa(no))
-	}
-	page := browser.MustPage(pageURL)
-	defer page.MustClose()
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message": "Hello, World!"}`))
+	})
 
-	if err := page.WaitLoad(); err != nil {
-		panic(err)
-	}
-
-	for {
-		has, _, err := page.Has(".box .ng-star-inserted .button.is-success.is-loading")
+	router.Post("/positions", func(w http.ResponseWriter, r *http.Request) {
+		b, err := io.ReadAll(r.Body)
 		if err != nil {
-			panic(err)
+			log.Println("Error reading request body:", err)
+			http.Error(w, "Failed to read request body", http.StatusBadRequest)
+			return
 		}
-		if !has {
-			break
+
+		var data requestBody
+		err = json.Unmarshal(b, &data)
+		if err != nil {
+			log.Println("Error unmarshaling JSON:", err)
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
 		}
 
-		time.Sleep(300 * time.Millisecond)
-	}
+		// base64デコード
+		imageData, err := base64.StdEncoding.DecodeString(data.ImageDataBase64[len("data:image/png;base64,"):])
+		if err != nil {
+			log.Println("Error decoding base64 image data:", err)
+			http.Error(w, "Invalid base64 image data", http.StatusBadRequest)
+			return
+		}
 
-	elm, err := page.Element(".box .ng-star-inserted .button.is-success")
+		grid, err := getProblemData(data.ProblemNo)
+		if err != nil {
+			log.Println("Error fetching problem data:", err)
+			http.Error(w, "Failed to fetch problem data", http.StatusInternalServerError)
+			return
+		}
+
+		if len(grid) == 0 || len(grid[0]) == 0 {
+			log.Println("Error: problem data is empty")
+			http.Error(w, "Problem data is empty", http.StatusInternalServerError)
+			return
+		}
+
+		cells, err := detect.DetectCells(imageData, len(grid), len(grid[0]))
+		if err != nil {
+			log.Println("Error detecting cell positions:", err)
+			http.Error(w, "Failed to detect cell positions", http.StatusInternalServerError)
+			return
+		}
+
+		// 結果をJSONで返す
+		responseData, err := json.Marshal(struct {
+			CellPositions []detect.Cell `json:"cells"`
+		}{
+			CellPositions: cells,
+		})
+		if err != nil {
+			http.Error(w, "Failed to marshal response JSON", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(responseData)
+	})
+
+	log.Println("Starting server on :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		panic(err)
+	}
+}
+
+func getProblemData(problemNo int) ([][]string, error) {
+	var url string
+	if problemNo == -1 {
+		url = "https://dailyakari.com/dailypuzzle"
+	} else {
+		url = fmt.Sprintf("https://dailyakari.com/archivepuzzle?number=%d", problemNo)
+	}
+	resp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		return [][]string{}, fmt.Errorf("failed to fetch problem data: %w", err)
 	}
+	defer resp.Body.Close()
 
-	if err := elm.Click(proto.InputMouseButtonLeft, 1); err != nil {
-		panic(err)
-	}
-
-	// 盤面が描画されるまで待機
-	if err := page.WaitLoad(); err != nil {
-		panic(err)
-	}
-	time.Sleep(5 * time.Second)
-
-	iframe := page.MustElement("iframe")
-	iframePage, err := iframe.Frame()
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return [][]string{}, fmt.Errorf("failed to read problem data: %w", err)
 	}
 
-	// canvas要素のデータURLを取得
-	obj, err := iframePage.Eval(`() => {
-		const canvas = document.getElementById('canvas');
-		return canvas.toDataURL('image/png');
-	}`)
-	if err != nil {
-		panic(err)
-	}
-	b64 := obj.Value.Str()
-
-	// png画像として保存
-	data, err := base64.StdEncoding.DecodeString(b64[len("data:image/png;base64,"):])
-	if err != nil {
-		panic(err)
+	type apiResponse struct {
+		LevelData string `json:"levelData"`
 	}
 
-	result := detect.Detect(data)
-	println(result)
+	var responseData apiResponse
+	if err := json.Unmarshal(body, &responseData); err != nil {
+		return [][]string{}, fmt.Errorf("failed to unmarshal problem data: %w", err)
+	}
+
+	grid := parseLevelData(responseData.LevelData)
+	return grid, nil
+}
+
+func parseLevelData(str string) [][]string {
+	var grid [][]string
+	// \n\nより手前がグリッドデータ
+	dataParts := strings.SplitN(str, "\n\n", 2)[0]
+
+	rows := strings.Split(dataParts, "\n")
+	for _, row := range rows {
+		grid = append(grid, strings.Split(row, " "))
+	}
+	return grid
 }

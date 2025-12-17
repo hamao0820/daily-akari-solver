@@ -3,6 +3,7 @@ module github.com/hamao0820/daily-akari-solver
 go 1.25.1
 
 require (
+	github.com/go-chi/chi v1.5.5
 	github.com/go-rod/rod v0.116.2
 	gocv.io/x/gocv v0.42.0
 )
