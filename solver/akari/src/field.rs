@@ -127,6 +127,23 @@ pub struct Solution {
     pub field: Vec<Vec<bool>>,
 }
 
+impl Solution {
+    /// あかりを配置する場所のリストに変換する
+    pub fn akari_indices(&self) -> Vec<(usize, usize)> {
+        self.field
+            .iter()
+            .enumerate()
+            .flat_map(|(r, row)| {
+                row.iter().enumerate().filter_map(
+                    move |(c, &has_akari)| {
+                        if has_akari { Some((r, c)) } else { None }
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
 // ========== テスト ==========
 #[cfg(test)]
 mod test_field {

@@ -11,12 +11,12 @@ pub struct SolveRequest {
 /// Response body returned by the solver endpoint.
 #[derive(Debug, Serialize)]
 pub struct SolveResponse {
-    pub solution: Option<String>,
+    pub solution: Option<Vec<(usize, usize)>>,
     pub error: Option<String>,
 }
 
 impl SolveResponse {
-    pub fn solved(solution: String) -> Self {
+    pub fn solved(solution: Vec<(usize, usize)>) -> Self {
         Self {
             solution: Some(solution),
             error: None,

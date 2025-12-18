@@ -19,10 +19,7 @@ fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
 
     let solver = CFS;
     match solver.solve(&field) {
-        Some(sol) => (
-            SolveResponse::solved(field.display_with_solution(&sol)),
-            StatusCode::OK,
-        ),
+        Some(sol) => (SolveResponse::solved(sol.akari_indices()), StatusCode::OK),
         None => (
             SolveResponse::failed(req, "solution not found"),
             StatusCode::NOT_FOUND,
