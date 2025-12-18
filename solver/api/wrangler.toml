@@ -3,7 +3,7 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2025-06-01"
 
 [build]
-command = "bash -lc 'set -euo pipefail; while ! mkdir .worker-build-lock 2>/dev/null; do sleep 0.05; done; trap \"rmdir .worker-build-lock\" EXIT; rm -rf ./build; worker-build --release'"
+command = "cargo install -q worker-build && worker-build --release"
 
 [observability]
 enabled = true
