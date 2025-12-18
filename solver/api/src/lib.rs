@@ -49,11 +49,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> worker::Result<Response
     console_error_panic_hook::set_once();
 
     let cors = Cors::default()
-        // .with_origins([
-        //     "http://localhost:8080",
-        //     "https://library.pwll.dev",
-        //     "https://library.kentakom1213.workers.dev",
-        // ])
+        .with_origins(["*"])
         .with_methods([Method::Get, Method::Post, Method::Options])
         .with_allowed_headers(["Content-Type", "Authorization"]);
 
