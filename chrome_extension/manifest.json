@@ -11,5 +11,11 @@
   "background": {
     "service_worker": "service-worker.js"
   },
-  "host_permissions": ["http://localhost:8080/*"]
+  "web_accessible_resources": [
+    {
+      "resources": ["image/*"],
+      "matches": ["https://dailyakari.com/*"]
+    }
+  ],
+  "host_permissions": ["http://localhost:8080/*", "https://akari-solver.kentakom1213.workers.dev/*"]
 }
