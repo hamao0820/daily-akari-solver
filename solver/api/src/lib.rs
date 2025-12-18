@@ -1,4 +1,5 @@
 mod io;
+mod tsp;
 
 use akari::{solver, Solver};
 use http::StatusCode;
@@ -20,7 +21,12 @@ fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
     let solver = solver::Fast::new();
     match solver.solve(&field) {
         Some(solution) => {
-            let response_body = SolveResponse::solved(solution.akari_indices());
+            let mut akari = solution.akari_indices();
+            if !akari.is_empty() {
+                let order = tsp::optimize_route_with_2opt(&akari);
+                akari = order.into_iter().map(|idx| akari[idx]).collect();
+            }
+            let response_body = SolveResponse::solved(akari);
             (response_body, StatusCode::OK)
         }
         None => {
