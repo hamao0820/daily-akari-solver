@@ -17,7 +17,7 @@ fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
         Err(msg) => return (SolveResponse::failed(req, msg), StatusCode::BAD_REQUEST),
     };
 
-    let solver = CFS;
+    let solver = CFS::new(req.timeout);
     match solver.solve(&field) {
         Some(sol) => (SolveResponse::solved(sol.akari_indices()), StatusCode::OK),
         None => (

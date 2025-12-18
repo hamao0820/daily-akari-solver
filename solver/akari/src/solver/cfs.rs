@@ -1,5 +1,7 @@
 //! 制約を優先的に探索
 
+use std::time::{Duration, Instant};
+
 use itertools::Itertools;
 
 use crate::{
@@ -11,9 +13,26 @@ use crate::{
 /// constraint first search
 ///
 /// 影響範囲が狭く強い制約を持つセル（数字セル）が「最も情報量の大きい変数」として優先される変数選択ヒューリスティック．
-pub struct CFS;
+#[derive(Clone, Copy, Debug)]
+pub struct CFS {
+    /// 制限時間
+    timeout: Option<Duration>,
+}
+
+impl Default for CFS {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
 
 impl CFS {
+    /// 制限時間（秒）を指定してソルバを構築する
+    pub fn new(timeout: Option<u64>) -> Self {
+        Self {
+            timeout: timeout.map(Duration::from_secs),
+        }
+    }
+
     fn rec(
         field: &Field,
         constraints: &[(usize, usize)],
@@ -21,13 +40,17 @@ impl CFS {
         cell_pos: usize,
         sol: Solution,
         fill: TempFill,
+        start: Instant,
+        timeout: Option<Duration>,
         found: &mut Option<Solution>,
     ) {
-        // println!("{}", field.display_with_solution_and_state(&sol, &fill));
-
         let (h, w) = (field.h, field.w);
 
         if found.is_some() {
+            return;
+        }
+
+        if Self::timed_out(start, timeout) {
             return;
         }
 
@@ -74,7 +97,17 @@ impl CFS {
                             (sol, fill)
                         })
                     {
-                        Self::rec(field, constraints, cons_pos + 1, cell_pos, sol, fill, found);
+                        Self::rec(
+                            field,
+                            constraints,
+                            cons_pos + 1,
+                            cell_pos,
+                            sol,
+                            fill,
+                            start,
+                            timeout,
+                            found,
+                        );
                     }
                 }
                 State::Adj1 => {
@@ -108,7 +141,17 @@ impl CFS {
                                 (sol, fill)
                             })
                         {
-                            Self::rec(field, constraints, cons_pos + 1, cell_pos, sol, fill, found);
+                            Self::rec(
+                                field,
+                                constraints,
+                                cons_pos + 1,
+                                cell_pos,
+                                sol,
+                                fill,
+                                start,
+                                timeout,
+                                found,
+                            );
                         }
                     }
                 }
@@ -143,7 +186,17 @@ impl CFS {
                                 (sol, fill)
                             })
                         {
-                            Self::rec(field, constraints, cons_pos + 1, cell_pos, sol, fill, found);
+                            Self::rec(
+                                field,
+                                constraints,
+                                cons_pos + 1,
+                                cell_pos,
+                                sol,
+                                fill,
+                                start,
+                                timeout,
+                                found,
+                            );
                         }
                     }
                 }
@@ -177,7 +230,17 @@ impl CFS {
                                 (sol, fill)
                             })
                         {
-                            Self::rec(field, constraints, cons_pos + 1, cell_pos, sol, fill, found);
+                            Self::rec(
+                                field,
+                                constraints,
+                                cons_pos + 1,
+                                cell_pos,
+                                sol,
+                                fill,
+                                start,
+                                timeout,
+                                found,
+                            );
                         }
                     }
                 }
@@ -205,7 +268,17 @@ impl CFS {
                                 .and_then(|(ar, ac)| Self::put_akari(field, ar, ac, sol, fill).ok())
                         })
                     {
-                        Self::rec(field, constraints, cons_pos + 1, cell_pos, sol, fill, found);
+                        Self::rec(
+                            field,
+                            constraints,
+                            cons_pos + 1,
+                            cell_pos,
+                            sol,
+                            fill,
+                            start,
+                            timeout,
+                            found,
+                        );
                     }
                 }
                 _ => unreachable!(),
@@ -220,14 +293,34 @@ impl CFS {
         if fill[r][c].can_put_akari() {
             // あかりを設置
             if let Ok((sol, fill)) = Self::put_akari(field, r, c, sol.clone(), fill.clone()) {
-                Self::rec(field, constraints, cons_pos, cell_pos + 1, sol, fill, found);
+                Self::rec(
+                    field,
+                    constraints,
+                    cons_pos,
+                    cell_pos + 1,
+                    sol,
+                    fill,
+                    start,
+                    timeout,
+                    found,
+                );
             }
         }
 
         // あかりを設置しない
         let mut fill = fill;
         fill[r][c].disable();
-        Self::rec(field, constraints, cons_pos, cell_pos + 1, sol, fill, found);
+        Self::rec(
+            field,
+            constraints,
+            cons_pos,
+            cell_pos + 1,
+            sol,
+            fill,
+            start,
+            timeout,
+            found,
+        );
     }
 
     /// field の (r, c) にあかりを配置する
@@ -297,6 +390,10 @@ impl CFS {
         }
         false
     }
+
+    fn timed_out(start: Instant, timeout: Option<Duration>) -> bool {
+        timeout.map_or(false, |t| start.elapsed() >= t)
+    }
 }
 
 impl Solver for CFS {
@@ -327,7 +424,18 @@ impl Solver for CFS {
             .collect();
         let mut found = None;
 
-        Self::rec(field, &constraints, 0, 0, sol, fill, &mut found);
+        let start = Instant::now();
+        Self::rec(
+            field,
+            &constraints,
+            0,
+            0,
+            sol,
+            fill,
+            start,
+            self.timeout,
+            &mut found,
+        );
 
         found
     }
@@ -346,7 +454,7 @@ mod test_cfs {
         let answer = Solution {
             field: vec![vec![true, false, true]],
         };
-        assert_eq!(CFS.solve(&field), Some(answer));
+        assert_eq!(CFS::default().solve(&field), Some(answer));
 
         let field = Field::from_str(3, 3, "2.1 ... ..0").unwrap();
         let answer = Solution {
@@ -356,6 +464,14 @@ mod test_cfs {
                 vec![false, false, false],
             ],
         };
-        assert_eq!(CFS.solve(&field), Some(answer));
+        assert_eq!(CFS::default().solve(&field), Some(answer));
+    }
+
+    #[test]
+    fn timeout_interrupts_search() {
+        let field = Field::from_str(1, 3, ".2.").unwrap();
+        let solver = CFS::new(Some(0));
+
+        assert_eq!(solver.solve(&field), None);
     }
 }
