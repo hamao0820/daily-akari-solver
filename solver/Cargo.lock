@@ -19,6 +19,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "api"
+version = "0.1.0"
+dependencies = [
+ "akari",
+ "console_error_panic_hook",
+ "http",
+ "serde",
+ "serde_json",
+ "tracing-subscriber",
+ "tracing-web",
+ "worker",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,17 +369,6 @@ name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
-
-[[package]]
-name = "my-library"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "http",
- "tracing-subscriber",
- "tracing-web",
- "worker",
-]
 
 [[package]]
 name = "nu-ansi-term"

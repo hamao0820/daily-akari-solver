@@ -1,10 +1,34 @@
+mod io;
+
+use akari::{solver::CFS, Solver};
 use http::StatusCode;
+use io::{SolveRequest, SolveResponse};
 use tracing_subscriber::{
     fmt::{format::Pretty, time::UtcTime},
     prelude::*,
 };
 use tracing_web::{performance_layer, MakeConsoleWriter};
 use worker::{event, Context, Cors, Env, Method, Request, Response, Router};
+
+/// Try to solve the puzzle in the request with the CFS solver.
+fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
+    let field = match req.to_field() {
+        Ok(field) => field,
+        Err(msg) => return (SolveResponse::failed(req, msg), StatusCode::BAD_REQUEST),
+    };
+
+    let solver = CFS;
+    match solver.solve(&field) {
+        Some(sol) => (
+            SolveResponse::solved(field.display_with_solution(&sol)),
+            StatusCode::OK,
+        ),
+        None => (
+            SolveResponse::failed(req, "solution not found"),
+            StatusCode::NOT_FOUND,
+        ),
+    }
+}
 
 #[event(start)]
 fn start() {
@@ -35,8 +59,22 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> worker::Result<Response
 
     let resp = Router::new()
         .get("/health", |_, _| Response::ok("Daily Akari Solver!"))
-        .post_async("/", |_req, _ctx| async move {
-            Response::error("Bad Request", StatusCode::BAD_REQUEST.as_u16())
+        .post_async("/", |mut req: Request, _ctx| async move {
+            let payload: SolveRequest = match req.json().await {
+                Ok(body) => body,
+                Err(err) => {
+                    return Response::error(
+                        format!("invalid JSON payload: {err}"),
+                        StatusCode::BAD_REQUEST.as_u16(),
+                    )
+                }
+            };
+
+            let (response_body, status) = solve_request_with_cfs(&payload);
+
+            let mut res = Response::from_json(&response_body)?;
+            res = res.with_status(status.as_u16());
+            Ok(res)
         })
         .run(req, env)
         .await?
