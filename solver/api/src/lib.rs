@@ -1,6 +1,6 @@
 mod io;
 
-use akari::{solver::CFS, Solver};
+use akari::solver::{CFS, CfsSolveResult};
 use http::StatusCode;
 use io::{SolveRequest, SolveResponse};
 use tracing_subscriber::{
@@ -18,9 +18,13 @@ fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
     };
 
     let solver = CFS::new(req.timeout);
-    match solver.solve(&field) {
-        Some(sol) => (SolveResponse::solved(sol.akari_indices()), StatusCode::OK),
-        None => (
+    match solver.solve_with_result(&field) {
+        CfsSolveResult::Solved(sol) => (SolveResponse::solved(sol.akari_indices()), StatusCode::OK),
+        CfsSolveResult::Timeout => (
+            SolveResponse::failed(req, "solver timeout"),
+            StatusCode::REQUEST_TIMEOUT,
+        ),
+        CfsSolveResult::Unsolved => (
             SolveResponse::failed(req, "solution not found"),
             StatusCode::NOT_FOUND,
         ),

@@ -1,7 +1,6 @@
 //! 制約を優先的に探索
 
-use std::time::{Duration, Instant};
-
+use instant::{Duration, Instant};
 use itertools::Itertools;
 
 use crate::{
@@ -17,6 +16,13 @@ use crate::{
 pub struct CFS {
     /// 制限時間
     timeout: Option<Duration>,
+}
+
+/// CFS の実行結果
+pub enum CfsSolveResult {
+    Solved(Solution),
+    Timeout,
+    Unsolved,
 }
 
 impl Default for CFS {
@@ -42,15 +48,17 @@ impl CFS {
         fill: TempFill,
         start: Instant,
         timeout: Option<Duration>,
+        timed_out: &mut bool,
         found: &mut Option<Solution>,
     ) {
         let (h, w) = (field.h, field.w);
 
-        if found.is_some() {
+        if *timed_out || found.is_some() {
             return;
         }
 
         if Self::timed_out(start, timeout) {
+            *timed_out = true;
             return;
         }
 
@@ -106,6 +114,7 @@ impl CFS {
                             fill,
                             start,
                             timeout,
+                            timed_out,
                             found,
                         );
                     }
@@ -150,6 +159,7 @@ impl CFS {
                                 fill,
                                 start,
                                 timeout,
+                                timed_out,
                                 found,
                             );
                         }
@@ -195,6 +205,7 @@ impl CFS {
                                 fill,
                                 start,
                                 timeout,
+                                timed_out,
                                 found,
                             );
                         }
@@ -239,6 +250,7 @@ impl CFS {
                                 fill,
                                 start,
                                 timeout,
+                                timed_out,
                                 found,
                             );
                         }
@@ -277,6 +289,7 @@ impl CFS {
                             fill,
                             start,
                             timeout,
+                            timed_out,
                             found,
                         );
                     }
@@ -302,6 +315,7 @@ impl CFS {
                     fill,
                     start,
                     timeout,
+                    timed_out,
                     found,
                 );
             }
@@ -319,6 +333,7 @@ impl CFS {
             fill,
             start,
             timeout,
+            timed_out,
             found,
         );
     }
@@ -394,10 +409,8 @@ impl CFS {
     fn timed_out(start: Instant, timeout: Option<Duration>) -> bool {
         timeout.map_or(false, |t| start.elapsed() >= t)
     }
-}
 
-impl Solver for CFS {
-    fn solve(&self, field: &Field) -> Option<Solution> {
+    pub fn solve_with_result(&self, field: &Field) -> CfsSolveResult {
         let h = field.field.len();
         let w = field.field.first().as_ref().map(|r| r.len()).unwrap_or(0);
         let sol = Solution {
@@ -423,6 +436,7 @@ impl Solver for CFS {
             })
             .collect();
         let mut found = None;
+        let mut timed_out = false;
 
         let start = Instant::now();
         Self::rec(
@@ -434,10 +448,24 @@ impl Solver for CFS {
             fill,
             start,
             self.timeout,
+            &mut timed_out,
             &mut found,
         );
 
-        found
+        match (found, timed_out) {
+            (Some(sol), _) => CfsSolveResult::Solved(sol),
+            (None, true) => CfsSolveResult::Timeout,
+            (None, false) => CfsSolveResult::Unsolved,
+        }
+    }
+}
+
+impl Solver for CFS {
+    fn solve(&self, field: &Field) -> Option<Solution> {
+        match self.solve_with_result(field) {
+            CfsSolveResult::Solved(sol) => Some(sol),
+            _ => None,
+        }
     }
 }
 
@@ -445,7 +473,7 @@ impl Solver for CFS {
 mod test_cfs {
     use crate::{
         field::{Field, Solution},
-        solver::{Solver, cfs::CFS},
+        solver::{CfsSolveResult, Solver, cfs::CFS},
     };
 
     #[test]
@@ -472,6 +500,10 @@ mod test_cfs {
         let field = Field::from_str(1, 3, ".2.").unwrap();
         let solver = CFS::new(Some(0));
 
+        assert!(matches!(
+            solver.solve_with_result(&field),
+            CfsSolveResult::Timeout
+        ));
         assert_eq!(solver.solve(&field), None);
     }
 }

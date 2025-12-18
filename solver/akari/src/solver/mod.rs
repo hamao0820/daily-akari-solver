@@ -5,6 +5,7 @@ mod cfs_with_pb;
 mod naive;
 
 pub use cfs::CFS;
+pub use cfs::CfsSolveResult;
 pub use cfs_with_pb::CFSwithPB;
 pub use naive::Naive;
 
