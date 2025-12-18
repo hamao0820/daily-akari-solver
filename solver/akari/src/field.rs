@@ -1,7 +1,5 @@
 //! フィールド
 
-use crate::solver::{Cell, TempFill};
-
 /// フィールドの状態
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -107,37 +105,6 @@ impl Field {
                             'A'
                         } else {
                             '.'
-                        }
-                    }
-                    State::Adj0 => '0',
-                    State::Adj1 => '1',
-                    State::Adj2 => '2',
-                    State::Adj3 => '3',
-                    State::Adj4 => '4',
-                };
-                s.push(ch);
-            }
-            s.push('\n');
-        }
-        s
-    }
-
-    pub fn display_with_solution_and_state(&self, sol: &Solution, fill: &TempFill) -> String {
-        let mut s = String::new();
-        for r in 0..self.h {
-            for c in 0..self.w {
-                let ch = match self.field[r][c] {
-                    State::Nil => '#',
-                    State::Empty => {
-                        if sol.field[r][c] {
-                            'A'
-                        } else {
-                            match fill[r][c] {
-                                Cell::Fillable => '?',
-                                Cell::Unfillable(false) => 'x',
-                                Cell::Unfillable(true) => '*',
-                                Cell::Nil => unreachable!(),
-                            }
                         }
                     }
                     State::Adj0 => '0',

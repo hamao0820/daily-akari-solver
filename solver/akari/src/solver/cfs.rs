@@ -4,35 +4,9 @@ use itertools::Itertools;
 
 use crate::{
     Field, Solution, Solver, State,
-    solver::OVERLAP_AKARI,
+    solver::{Cell, OVERLAP_AKARI, TempFill},
     utility::{ADJ, GridUtility},
 };
-
-/// セルの一時的な状態
-#[derive(Debug, Clone)]
-pub enum Cell {
-    /// あかりを置くことができるセル
-    Fillable,
-    /// あかりを置くことができないセル（照らされているか）
-    Unfillable(bool),
-    Nil,
-}
-
-impl Cell {
-    /// セルをあかりがおけない状態にする
-    pub fn disable(&mut self) {
-        if let Self::Fillable = self {
-            *self = Self::Unfillable(false)
-        }
-    }
-
-    /// セルにあかりを置くことができるかどうか
-    pub fn can_put_akari(&self) -> bool {
-        matches!(self, Self::Fillable)
-    }
-}
-
-pub type TempFill = Vec<Vec<Cell>>;
 
 /// constraint first search
 ///

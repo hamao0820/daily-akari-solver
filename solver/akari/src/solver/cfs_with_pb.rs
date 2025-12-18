@@ -382,7 +382,7 @@ impl Solver for CFSwithPB {
 mod test_cfs2 {
     use crate::{
         field::{Field, Solution},
-        solver::{Solver, cfs2::CFSwithPB},
+        solver::{Solver, cfs_with_pb::CFSwithPB},
     };
 
     #[test]

@@ -1,11 +1,12 @@
 //! ソルバの実装
 
-mod naive;
-pub use naive::Naive;
 mod cfs;
-pub use cfs::{CFS, Cell, TempFill};
-mod cfs2;
-pub use cfs2::CFSwithPB;
+mod cfs_with_pb;
+mod naive;
+
+pub use cfs::CFS;
+pub use cfs_with_pb::CFSwithPB;
+pub use naive::Naive;
 
 use crate::{
     field::{Field, Solution, State},
@@ -15,6 +16,33 @@ use crate::{
 const MISMATCH_AKARI: &str = "The number of lights does not match.";
 const OVERLAP_AKARI: &str = "The light is already in place.";
 const UNLIT_CELL: &str = "There are cells that are not lighted.";
+
+/// セルの一時的な状態
+#[derive(Debug, Clone)]
+enum Cell {
+    /// あかりを置くことができるセル
+    Fillable,
+    /// あかりを置くことができないセル（照らされているか）
+    Unfillable(bool),
+    Nil,
+}
+
+impl Cell {
+    /// セルをあかりがおけない状態にする
+    pub fn disable(&mut self) {
+        if let Self::Fillable = self {
+            *self = Self::Unfillable(false)
+        }
+    }
+
+    /// セルにあかりを置くことができるかどうか
+    pub fn can_put_akari(&self) -> bool {
+        matches!(self, Self::Fillable)
+    }
+}
+
+/// 一時的な状態の管理
+type TempFill = Vec<Vec<Cell>>;
 
 /// ソルバを表すトレイト
 pub trait Solver {
