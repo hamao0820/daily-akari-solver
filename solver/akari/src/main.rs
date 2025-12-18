@@ -5,7 +5,7 @@ use akari::{Field, Solver, solver};
 fn main() -> Result<(), &'static str> {
     let (h, w, s) = get_input();
 
-    let solver = solver::CFS::new(Some(5));
+    let solver = solver::Fast::new();
     let field = Field::from_str(h, w, &s)?;
 
     // 求解

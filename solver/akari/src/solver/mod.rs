@@ -2,11 +2,13 @@
 
 mod cfs;
 mod cfs_with_pb;
+mod fast;
 mod naive;
 
 pub use cfs::CFS;
 pub use cfs::CfsSolveResult;
 pub use cfs_with_pb::CFSwithPB;
+pub use fast::Fast;
 pub use naive::Naive;
 
 use crate::{

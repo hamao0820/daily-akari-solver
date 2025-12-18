@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 pub struct SolveRequest {
     pub problem: String,
-    pub timeout: Option<u64>,
 }
 
 /// Response body returned by the solver endpoint.
@@ -57,7 +56,6 @@ mod solve_request_tests {
 
         let req: SolveRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.problem, ". . .\n. # .\n. . .");
-        assert_eq!(req.timeout, Some(3));
     }
 
     #[test]
@@ -68,7 +66,6 @@ mod solve_request_tests {
 
         let req: SolveRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.problem, ". . .\n. # .\n. . .");
-        assert_eq!(req.timeout, None);
     }
 }
 
