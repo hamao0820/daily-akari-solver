@@ -23,7 +23,7 @@ fn solve_request_with_cfs(req: &SolveRequest) -> (SolveResponse, StatusCode) {
         Some(solution) => {
             let mut akari = solution.akari_indices();
             if !akari.is_empty() {
-                let order = tsp::optimize_route_with_2opt(&akari);
+                let order = tsp::optimize_route_with_2opt(&akari, field.w);
                 akari = order.into_iter().map(|idx| akari[idx]).collect();
             }
             let response_body = SolveResponse::solved(akari);
