@@ -40,6 +40,9 @@ window.addEventListener("load", async () => {
   document.body.appendChild(solveButton);
 
   solveButton.addEventListener("click", async () => {
+    const result = await chrome.storage.local.get(["solveWithFairy"]);
+    const solveWithFairy = result.solveWithFairy || false;
+
     // ボタンを無効化
     solveButton.disabled = true;
     solveButton.style.opacity = "0.6";
@@ -67,101 +70,139 @@ window.addEventListener("load", async () => {
       const cells = response.cells;
       const solutions = response.solution;
 
-      const img = document.createElement("img");
-      img.src = chrome.runtime.getURL("image/妖精.png");
-      img.style.width = "32px";
-      img.style.height = "32px";
-      img.style.position = "absolute";
-      img.style.top = "10px";
-      img.style.right = "200px";
-      img.style.zIndex = "1000";
-      img.style.transition = "transform 0.1s ease-out";
+      if (solveWithFairy) {
+        const img = document.createElement("img");
+        img.src = chrome.runtime.getURL("image/妖精.png");
+        img.style.width = "32px";
+        img.style.height = "32px";
+        img.style.position = "absolute";
+        img.style.top = "10px";
+        img.style.right = "200px";
+        img.style.zIndex = "1000";
+        img.style.transition = "transform 0.1s ease-out";
 
-      // イージング関数（ease-in-out）
-      const easeInOutCubic = (t) => {
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      };
+        // イージング関数（ease-in-out）
+        const easeInOutCubic = (t) => {
+          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        };
 
-      for (const solution of solutions) {
-        document.body.appendChild(img);
+        for (const solution of solutions) {
+          document.body.appendChild(img);
 
-        const cell = cells.find((cell) => cell.Row === solution[0] && cell.Col === solution[1]);
-        if (!cell) {
-          console.error("Cell not found for solution:", solution);
-          continue;
+          const cell = cells.find((cell) => cell.Row === solution[0] && cell.Col === solution[1]);
+          if (!cell) {
+            console.error("Cell not found for solution:", solution);
+            continue;
+          }
+
+          const centerX = cell.Center.X;
+          const centerY = cell.Center.Y;
+
+          const clientX = centerX / 2;
+          const clientY = centerY / 2;
+
+          // 開始位置を取得
+          const imgRect = img.getBoundingClientRect();
+          const startX = imgRect.left + imgRect.width / 2;
+          const startY = imgRect.top + imgRect.height / 2;
+
+          // 目標までの距離と角度を計算
+          const totalDeltaX = clientX - startX;
+          const totalDeltaY = clientY - startY;
+          const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
+          const angle = Math.atan2(totalDeltaY, totalDeltaX);
+
+          // ベジェ曲線の制御点（弧を描く軌道を作る）
+          // 垂直方向の制御点オフセットを増やして、より美しい弧を描くようにする
+          const controlPointX = startX + totalDeltaX * 0.5 + Math.sin(angle + Math.PI / 2) * totalDistance * 0.3;
+          const controlPointY = startY + totalDeltaY * 0.5 + Math.cos(angle + Math.PI / 2) * totalDistance * 0.3;
+
+          // アニメーションの総時間とステップ
+          const duration = Math.min(1000, totalDistance * 4); // 距離に応じた時間（ゆっくり）
+          const steps = Math.ceil(duration / 16); // 約60fps
+          let currentStep = 0;
+
+          // アニメーションループ
+          while (currentStep <= steps) {
+            const progress = currentStep / steps;
+            const easedProgress = easeInOutCubic(progress);
+
+            // ベジェ曲線上の位置を計算
+            const t = easedProgress;
+            const x = Math.pow(1 - t, 2) * startX + 2 * (1 - t) * t * controlPointX + Math.pow(t, 2) * clientX;
+            const y = Math.pow(1 - t, 2) * startY + 2 * (1 - t) * t * controlPointY + Math.pow(t, 2) * clientY;
+
+            // ふわふわとした上下運動を追加（控えめに）
+            const floatOffset = Math.sin(progress * Math.PI * 3) * 2;
+
+            // 軽微な回転のみ（進行方向に少し傾く程度）
+            const tiltAngle = Math.sin(progress * Math.PI) * 5; // -5度から+5度の範囲
+
+            // 画像の位置と回転を更新
+            img.style.left = `${x - imgRect.width / 2}px`;
+            img.style.top = `${y - imgRect.height / 2 + floatOffset}px`;
+            img.style.transform = `rotate(${tiltAngle}deg) scale(${1 + Math.sin(progress * Math.PI) * 0.08})`;
+
+            currentStep++;
+            await new Promise((resolve) => setTimeout(resolve, 16));
+          }
+
+          // 最終位置に正確に配置
+          img.style.left = `${clientX - imgRect.width / 2}px`;
+          img.style.top = `${clientY - imgRect.height / 2}px`;
+          img.style.transform = `rotate(0deg) scale(1)`;
+
+          // クリックイベントをシミュレート
+          const mousedownEvent = new MouseEvent("mousedown", {
+            clientX,
+            clientY,
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          });
+          canvas.dispatchEvent(mousedownEvent);
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
-        const centerX = cell.Center.X;
-        const centerY = cell.Center.Y;
-
-        const clientX = centerX / 2;
-        const clientY = centerY / 2;
-
-        // 開始位置を取得
-        const imgRect = img.getBoundingClientRect();
-        const startX = imgRect.left + imgRect.width / 2;
-        const startY = imgRect.top + imgRect.height / 2;
-
-        // 目標までの距離と角度を計算
-        const totalDeltaX = clientX - startX;
-        const totalDeltaY = clientY - startY;
-        const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
-        const angle = Math.atan2(totalDeltaY, totalDeltaX);
-
-        // ベジェ曲線の制御点（弧を描く軌道を作る）
-        // 垂直方向の制御点オフセットを増やして、より美しい弧を描くようにする
-        const controlPointX = startX + totalDeltaX * 0.5 + Math.sin(angle + Math.PI / 2) * totalDistance * 0.3;
-        const controlPointY = startY + totalDeltaY * 0.5 + Math.cos(angle + Math.PI / 2) * totalDistance * 0.3;
-
-        // アニメーションの総時間とステップ
-        const duration = Math.min(2000, totalDistance * 4); // 距離に応じた時間（ゆっくり）
-        const steps = Math.ceil(duration / 16); // 約60fps
-        let currentStep = 0;
-
-        // アニメーションループ
-        while (currentStep <= steps) {
-          const progress = currentStep / steps;
-          const easedProgress = easeInOutCubic(progress);
-
-          // ベジェ曲線上の位置を計算
-          const t = easedProgress;
-          const x = Math.pow(1 - t, 2) * startX + 2 * (1 - t) * t * controlPointX + Math.pow(t, 2) * clientX;
-          const y = Math.pow(1 - t, 2) * startY + 2 * (1 - t) * t * controlPointY + Math.pow(t, 2) * clientY;
-
-          // ふわふわとした上下運動を追加（控えめに）
-          const floatOffset = Math.sin(progress * Math.PI * 3) * 2;
-
-          // 軽微な回転のみ（進行方向に少し傾く程度）
-          const tiltAngle = Math.sin(progress * Math.PI) * 5; // -5度から+5度の範囲
-
-          // 画像の位置と回転を更新
-          img.style.left = `${x - imgRect.width / 2}px`;
-          img.style.top = `${y - imgRect.height / 2 + floatOffset}px`;
-          img.style.transform = `rotate(${tiltAngle}deg) scale(${1 + Math.sin(progress * Math.PI) * 0.08})`;
-
-          currentStep++;
-          await new Promise((resolve) => setTimeout(resolve, 16));
-        }
-
-        // 最終位置に正確に配置
-        img.style.left = `${clientX - imgRect.width / 2}px`;
-        img.style.top = `${clientY - imgRect.height / 2}px`;
-        img.style.transform = `rotate(0deg) scale(1)`;
-
-        // クリックイベントをシミュレート
-        const mousedownEvent = new MouseEvent("mousedown", {
-          clientX,
-          clientY,
-          bubbles: true,
-          cancelable: true,
-          view: window,
+        document.body.removeChild(img);
+      } else {
+        // solutions をrowとcolでソート
+        solutions.sort((a, b) => {
+          if (a[0] === b[0]) {
+            return a[1] - b[1];
+          }
+          return a[0] - b[0];
         });
-        canvas.dispatchEvent(mousedownEvent);
 
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        console.log("Sorted solutions:", solutions);
+
+        for (const solution of solutions) {
+          const cell = cells.find((cell) => cell.Row === solution[0] && cell.Col === solution[1]);
+          if (!cell) {
+            console.error("Cell not found for solution:", solution);
+            continue;
+          }
+
+          const centerX = cell.Center.X;
+          const centerY = cell.Center.Y;
+
+          const clientX = centerX / 2;
+          const clientY = centerY / 2;
+
+          // クリックイベントをシミュレート
+          const mousedownEvent = new MouseEvent("mousedown", {
+            clientX,
+            clientY,
+            bubbles: true,
+            cancelable: true,
+            view: window,
+          });
+          canvas.dispatchEvent(mousedownEvent);
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
       }
-
-      document.body.removeChild(img);
     } finally {
       // ボタンを再度有効化
       solveButton.disabled = false;
