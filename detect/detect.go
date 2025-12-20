@@ -2,12 +2,18 @@ package detect
 
 import (
 	"errors"
-	"fmt"
 	"image"
 	"image/color"
 
 	"gocv.io/x/gocv"
 )
+
+// Cell 判定結果
+type Cell struct {
+	Center image.Point
+	Row    int
+	Col    int
+}
 
 func DetectCells(buf []byte, rows, cols int) ([]Cell, error) {
 	img, err := gocv.IMDecode(buf, gocv.IMReadColor)
@@ -22,60 +28,53 @@ func DetectCells(buf []byte, rows, cols int) ([]Cell, error) {
 	contours := findContours(img)
 	defer contours.Close()
 
-	boardRectangle := calcBoardRectangle(contours, rows, cols)
+	boardRect := calcBoardRectangle(contours)
 
-	boardImg := img.Region(boardRectangle)
-	defer boardImg.Close()
+	margin := int(20.526 - 0.009*float64(rows*cols))
+	croppedRect := image.Rect(boardRect.Min.X+margin, boardRect.Min.Y+margin, boardRect.Max.X-margin, boardRect.Max.Y-margin)
 
-	contoursOnBoard := findContours(boardImg)
-	lightPleacableCells := etractLightPleacableCells(contoursOnBoard, boardRectangle.Dx()*boardRectangle.Dy(), rows, cols)
+	croppedImg := img.Region(croppedRect)
+	defer croppedImg.Close()
 
-	rects := []image.Rectangle{}
-	for _, contour := range lightPleacableCells {
-		rect := gocv.BoundingRect(contour)
-		rects = append(rects, rect)
+	width := croppedImg.Size()[1]
+	height := croppedImg.Size()[0]
+
+	centersIntervalX := float64(width) / float64(2*cols)
+	centersIntervalY := float64(height) / float64(2*rows)
+
+	cells := make([]Cell, 0, rows*cols)
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			centerX := int(centersIntervalX * float64(2*c+1))
+			centerY := int(centersIntervalY * float64(2*r+1))
+
+			// 少し外側にずらす
+			if c < cols/2 {
+				centerX -= int(centersIntervalX * 0.15)
+			} else if c > cols/2 {
+				centerX += int(centersIntervalX * 0.15)
+			}
+			if r < rows/2 {
+				centerY -= int(centersIntervalY * 0.15)
+			} else if r > rows/2 {
+				centerY += int(centersIntervalY * 0.15)
+			}
+
+			cells = append(cells, Cell{
+				Center: image.Pt(centerX, centerY),
+				Row:    r,
+				Col:    c,
+			})
+		}
 	}
 
-	// boardRect := image.Rectangle{Min: image.Pt(0, 0), Max: image.Pt(boardImg.Size()[0], boardImg.Size()[1])}
-	cells, err := IdentifyGridCells(image.Pt(boardImg.Size()[0], boardImg.Size()[1]), rows, cols, rects)
-	if err != nil {
-		return []Cell{}, fmt.Errorf("failed to identify grid cells: %w", err)
-	}
-
-	// 矩形の位置を元画像基準に補正
+	// 元の画像座標に変換
 	for i := range cells {
-		cells[i].Rect = cells[i].Rect.Add(boardRectangle.Min)
+		cells[i].Center.X += croppedRect.Min.X
+		cells[i].Center.Y += croppedRect.Min.Y
 	}
 
 	return cells, nil
-}
-
-// countours からアカリを置くことができるセルを抽出する
-func etractLightPleacableCells(countours gocv.PointsVector, boardArea int, row, col int) []gocv.PointVector {
-	// 標準的なセルの面積を計算しておく
-	standardArea := float64(boardArea) / float64(row*col)
-
-	normalCells := []gocv.PointVector{}
-	for i := 0; i < countours.Size(); i++ {
-		contour := countours.At(i)
-		area := gocv.ContourArea(contour)
-
-		// 面積が標準的なセルから2倍以上離れているものは除外
-		if area < standardArea*0.5 || area > standardArea*2.0 {
-			continue
-		}
-
-		// アスペクト比が極端に偏っているものは除外
-		rect := gocv.BoundingRect(contour)
-		aspectRatio := min(float64(rect.Dx())/float64(rect.Dy()), float64(rect.Dy())/float64(rect.Dx()))
-		if aspectRatio < 0.75 {
-			continue
-		}
-
-		normalCells = append(normalCells, contour)
-	}
-
-	return normalCells
 }
 
 // img から輪郭を検出
@@ -101,7 +100,7 @@ func findContours(img gocv.Mat) gocv.PointsVector {
 }
 
 // 各 countour から一番外側の polygon を作成する
-func calcBoardRectangle(contours gocv.PointsVector, rows, cols int) image.Rectangle {
+func calcBoardRectangle(contours gocv.PointsVector) image.Rectangle {
 	allPoints := []image.Point{}
 	for i := 0; i < contours.Size(); i++ {
 		contour := contours.At(i)

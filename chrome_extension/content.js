@@ -91,8 +91,8 @@ window.addEventListener("load", async () => {
           continue;
         }
 
-        const centerX = (cell.Rect.Min.X + cell.Rect.Max.X) / 2;
-        const centerY = (cell.Rect.Min.Y + cell.Rect.Max.Y) / 2;
+        const centerX = cell.Center.X;
+        const centerY = cell.Center.Y;
 
         const clientX = centerX / 2;
         const clientY = centerY / 2;
