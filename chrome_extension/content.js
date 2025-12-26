@@ -1,327 +1,266 @@
-window.addEventListener("load", async () => {
-  // サンドボックスの初期化
-  let sandboxFrame = null;
-  let sandboxReady = false;
-  let sandboxResolvers = new Map();
-  let messageId = 0;
+/**
+ * Akari Solver - Content Script
+ * Detects cells using OpenCV.js and solves the puzzle
+ */
 
-  function initSandbox() {
+// Sandbox manager for OpenCV.js
+class SandboxManager {
+  constructor() {
+    this.frame = null;
+    this.ready = false;
+    this.resolvers = new Map();
+    this.messageId = 0;
+  }
+
+  async init() {
+    if (this.frame) {
+      if (this.ready) return;
+      throw new Error("Sandbox is initializing");
+    }
+
     return new Promise((resolve) => {
-      if (sandboxFrame) {
-        if (sandboxReady) {
-          resolve();
-        }
-        return;
-      }
+      this.frame = document.createElement("iframe");
+      this.frame.src = chrome.runtime.getURL("sandbox.html");
+      this.frame.style.display = "none";
 
-      sandboxFrame = document.createElement("iframe");
-      sandboxFrame.src = chrome.runtime.getURL("sandbox.html");
-      sandboxFrame.style.display = "none";
+      window.addEventListener("message", (event) => this.handleMessage(event));
 
-      // メッセージリスナーを設定
-      window.addEventListener("message", (event) => {
-        if (event.source !== sandboxFrame.contentWindow) return;
-
-        if (event.data.type === "opencv-ready") {
-          sandboxReady = true;
-          console.log("OpenCV ready in sandbox");
-          resolve();
-        } else if (event.data.type === "result") {
-          const resolver = sandboxResolvers.get(event.data.messageId);
-          if (resolver) {
-            resolver.resolve(event.data);
-            sandboxResolvers.delete(event.data.messageId);
-          }
-        } else if (event.data.type === "error") {
-          const resolver = sandboxResolvers.get(event.data.messageId);
-          if (resolver) {
-            resolver.reject(new Error(event.data.message));
-            sandboxResolvers.delete(event.data.messageId);
-          }
-        }
+      this.frame.addEventListener("load", () => {
+        // Wait for OpenCV ready message
       });
 
-      document.body.appendChild(sandboxFrame);
+      document.body.appendChild(this.frame);
+
+      // Store resolve for opencv-ready message
+      this.initResolve = resolve;
     });
   }
 
-  function sendToSandbox(message) {
-    return new Promise((resolve, reject) => {
-      if (!sandboxReady) {
-        reject(new Error("Sandbox not ready"));
-        return;
-      }
+  handleMessage(event) {
+    if (event.source !== this.frame?.contentWindow) return;
 
-      const id = messageId++;
+    const { type, messageId } = event.data;
+
+    if (type === "opencv-ready") {
+      this.ready = true;
+      console.log("OpenCV ready in sandbox");
+      this.initResolve?.();
+    } else if (type === "result" || type === "error") {
+      const resolver = this.resolvers.get(messageId);
+      if (resolver) {
+        if (type === "result") {
+          resolver.resolve(event.data);
+        } else {
+          resolver.reject(new Error(event.data.message));
+        }
+        this.resolvers.delete(messageId);
+      }
+    }
+  }
+
+  async sendMessage(message, timeout = 30000) {
+    if (!this.ready) {
+      throw new Error("Sandbox not ready");
+    }
+
+    return new Promise((resolve, reject) => {
+      const id = this.messageId++;
       message.messageId = id;
 
-      sandboxResolvers.set(id, { resolve, reject });
+      this.resolvers.set(id, { resolve, reject });
+      this.frame.contentWindow.postMessage(message, "*");
 
-      sandboxFrame.contentWindow.postMessage(message, "*");
-
-      // タイムアウトを設定
       setTimeout(() => {
-        if (sandboxResolvers.has(id)) {
-          sandboxResolvers.delete(id);
+        if (this.resolvers.has(id)) {
+          this.resolvers.delete(id);
           reject(new Error("Sandbox timeout"));
         }
-      }, 30000);
+      }, timeout);
+    });
+  }
+}
+
+// UI Button Manager
+class SolveButton {
+  constructor(onClick) {
+    this.button = this.createButton();
+    this.button.addEventListener("click", onClick);
+    document.body.appendChild(this.button);
+  }
+
+  createButton() {
+    const button = document.createElement("button");
+    button.innerText = "✨ Solve Akari";
+
+    Object.assign(button.style, {
+      position: "fixed",
+      top: "10px",
+      right: "20px",
+      zIndex: "1000",
+      padding: "12px 24px",
+      fontSize: "16px",
+      fontWeight: "600",
+      color: "#fff",
+      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      border: "none",
+      borderRadius: "25px",
+      cursor: "pointer",
+      boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+      transition: "all 0.3s ease",
+      fontFamily: "system-ui, -apple-system, sans-serif",
+    });
+
+    this.addHoverEffects(button);
+    return button;
+  }
+
+  addHoverEffects(button) {
+    button.addEventListener("mouseenter", () => {
+      button.style.transform = "translateY(-2px)";
+      button.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+    });
+
+    button.addEventListener("mouseleave", () => {
+      button.style.transform = "translateY(0)";
+      button.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+    });
+
+    button.addEventListener("mousedown", () => {
+      button.style.transform = "translateY(0) scale(0.95)";
+    });
+
+    button.addEventListener("mouseup", () => {
+      button.style.transform = "translateY(-2px) scale(1)";
     });
   }
 
-  const solveButton = document.createElement("button");
-  solveButton.innerText = "✨ Solve Akari";
-  solveButton.style.position = "fixed";
-  solveButton.style.top = "10px";
-  solveButton.style.right = "20px";
-  solveButton.style.zIndex = "1000";
-  solveButton.style.padding = "12px 24px";
-  solveButton.style.fontSize = "16px";
-  solveButton.style.fontWeight = "600";
-  solveButton.style.color = "#fff";
-  solveButton.style.background = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)";
-  solveButton.style.border = "none";
-  solveButton.style.borderRadius = "25px";
-  solveButton.style.cursor = "pointer";
-  solveButton.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-  solveButton.style.transition = "all 0.3s ease";
-  solveButton.style.fontFamily = "system-ui, -apple-system, sans-serif";
+  setLoading(loading) {
+    this.button.disabled = loading;
+    this.button.style.opacity = loading ? "0.6" : "1";
+    this.button.style.cursor = loading ? "not-allowed" : "pointer";
+    this.button.innerText = loading ? "⏳ Solving..." : "✨ Solve Akari";
+  }
+}
 
-  // ホバー効果
-  solveButton.addEventListener("mouseenter", () => {
-    solveButton.style.transform = "translateY(-2px)";
-    solveButton.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
-  });
+// Main solver logic
+class AkariSolver {
+  constructor() {
+    this.sandbox = new SandboxManager();
+  }
 
-  solveButton.addEventListener("mouseleave", () => {
-    solveButton.style.transform = "translateY(0)";
-    solveButton.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
-  });
+  async getCanvasImageData() {
+    const iframe = document.querySelector("iframe");
+    const canvas = iframe.contentDocument.querySelector("canvas");
+    const dataURL = canvas.toDataURL("image/png");
 
-  // アクティブ状態
-  solveButton.addEventListener("mousedown", () => {
-    solveButton.style.transform = "translateY(0) scale(0.95)";
-  });
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = dataURL;
+    });
 
-  solveButton.addEventListener("mouseup", () => {
-    solveButton.style.transform = "translateY(-2px) scale(1)";
-  });
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+    const ctx = tempCanvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
 
-  document.body.appendChild(solveButton);
+    return {
+      imageData: ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height),
+      canvas,
+    };
+  }
 
-  solveButton.addEventListener("click", async () => {
-    const result = await chrome.storage.local.get(["solveWithFairy"]);
-    const solveWithFairy = result.solveWithFairy || false;
+  getProblemNumber() {
+    const match = window.location.href.match(/\/archive\/(\d+)/);
+    return match ? parseInt(match[1], 10) : -1;
+  }
 
-    // ボタンを無効化
-    solveButton.disabled = true;
-    solveButton.style.opacity = "0.6";
-    solveButton.style.cursor = "not-allowed";
-    solveButton.innerText = "⏳ Solving...";
+  async detectCells(imageData, problemData) {
+    const result = await this.sandbox.sendMessage({
+      type: "detectCells",
+      imageData,
+      width: imageData.width,
+      height: imageData.height,
+      rows: problemData.length,
+      cols: problemData[0].length,
+    });
 
-    try {
-      // サンドボックスを初期化
-      await initSandbox();
+    return result.cells.map((cell) => ({
+      Row: cell.row,
+      Col: cell.col,
+      Center: {
+        X: cell.centerX,
+        Y: cell.centerY,
+      },
+    }));
+  }
 
-      // canvasの画像データを取得
-      const iframe = document.querySelector("iframe");
-      const iframeDocument = iframe.contentDocument;
-      const canvas = iframeDocument.querySelector("canvas");
-      const dataURL = canvas.toDataURL("image/png");
+  async solve() {
+    await this.sandbox.init();
 
-      // 画像をImageDataに変換
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = dataURL;
-      });
+    const { imageData, canvas } = await this.getCanvasImageData();
+    const problemNo = this.getProblemNumber();
 
-      const tempCanvas = document.createElement("canvas");
-      tempCanvas.width = img.width;
-      tempCanvas.height = img.height;
-      const ctx = tempCanvas.getContext("2d");
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const { problemData } = await chrome.runtime.sendMessage({
+      type: "getProblemData",
+      problemNo,
+    });
 
-      // URLから問題番号を抽出
-      const pageURL = window.location.href;
-      const archiveMatch = pageURL.match(/\/archive\/(\d+)/);
-      const problemNo = archiveMatch ? parseInt(archiveMatch[1], 10) : -1;
+    const cells = await this.detectCells(imageData, problemData);
 
-      // 問題データを取得
-      const problemDataResponse = await chrome.runtime.sendMessage({
-        type: "getProblemData",
-        problemNo,
-      });
-      const problemData = problemDataResponse.problemData;
+    const { solution } = await chrome.runtime.sendMessage({
+      type: "getSolution",
+      problemData,
+    });
 
-      // サンドボックスでセル検出を実行
-      const cellResult = await sendToSandbox({
-        type: "detectCells",
-        imageData: imageData,
-        width: imageData.width,
-        height: imageData.height,
-        rows: problemData.length,
-        cols: problemData[0].length,
-      });
+    await this.applySolution(canvas, cells, solution);
+  }
 
-      // セル情報を変換（Go APIのフォーマットに合わせる）
-      const cells = cellResult.cells.map((cell) => ({
-        Row: cell.row,
-        Col: cell.col,
-        Center: {
-          X: cell.centerX,
-          Y: cell.centerY,
-        },
-      }));
+  async applySolution(canvas, cells, solutions) {
+    // Sort solutions by row and column
+    solutions.sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]));
 
-      // 解答を取得
-      const solutionResponse = await chrome.runtime.sendMessage({
-        type: "getSolution",
-        problemData,
-      });
-      const solutions = solutionResponse.solution;
+    console.log("Applying solution:", solutions);
 
-      if (solveWithFairy) {
-        const img = document.createElement("img");
-        img.src = chrome.runtime.getURL("image/妖精.png");
-        img.style.width = "32px";
-        img.style.height = "32px";
-        img.style.position = "absolute";
-        img.style.top = "10px";
-        img.style.right = "200px";
-        img.style.zIndex = "1000";
-        img.style.transition = "transform 0.1s ease-out";
-
-        // イージング関数（ease-in-out）
-        const easeInOutCubic = (t) => {
-          return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-        };
-
-        for (const solution of solutions) {
-          document.body.appendChild(img);
-
-          const cell = cells.find((cell) => cell.Row === solution[0] && cell.Col === solution[1]);
-          if (!cell) {
-            console.error("Cell not found for solution:", solution);
-            continue;
-          }
-
-          const centerX = cell.Center.X;
-          const centerY = cell.Center.Y;
-
-          const clientX = centerX / 2;
-          const clientY = centerY / 2;
-
-          // 開始位置を取得
-          const imgRect = img.getBoundingClientRect();
-          const startX = imgRect.left + imgRect.width / 2;
-          const startY = imgRect.top + imgRect.height / 2;
-
-          // 目標までの距離と角度を計算
-          const totalDeltaX = clientX - startX;
-          const totalDeltaY = clientY - startY;
-          const totalDistance = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
-          const angle = Math.atan2(totalDeltaY, totalDeltaX);
-
-          // ベジェ曲線の制御点（弧を描く軌道を作る）
-          // 垂直方向の制御点オフセットを増やして、より美しい弧を描くようにする
-          const controlPointX = startX + totalDeltaX * 0.5 + Math.sin(angle + Math.PI / 2) * totalDistance * 0.3;
-          const controlPointY = startY + totalDeltaY * 0.5 + Math.cos(angle + Math.PI / 2) * totalDistance * 0.3;
-
-          // アニメーションの総時間とステップ
-          const duration = Math.min(1000, totalDistance * 4); // 距離に応じた時間（ゆっくり）
-          const steps = Math.ceil(duration / 16); // 約60fps
-          let currentStep = 0;
-
-          // アニメーションループ
-          while (currentStep <= steps) {
-            const progress = currentStep / steps;
-            const easedProgress = easeInOutCubic(progress);
-
-            // ベジェ曲線上の位置を計算
-            const t = easedProgress;
-            const x = Math.pow(1 - t, 2) * startX + 2 * (1 - t) * t * controlPointX + Math.pow(t, 2) * clientX;
-            const y = Math.pow(1 - t, 2) * startY + 2 * (1 - t) * t * controlPointY + Math.pow(t, 2) * clientY;
-
-            // ふわふわとした上下運動を追加（控えめに）
-            const floatOffset = Math.sin(progress * Math.PI * 3) * 2;
-
-            // 軽微な回転のみ（進行方向に少し傾く程度）
-            const tiltAngle = Math.sin(progress * Math.PI) * 5; // -5度から+5度の範囲
-
-            // 画像の位置と回転を更新
-            img.style.left = `${x - imgRect.width / 2}px`;
-            img.style.top = `${y - imgRect.height / 2 + floatOffset}px`;
-            img.style.transform = `rotate(${tiltAngle}deg) scale(${1 + Math.sin(progress * Math.PI) * 0.08})`;
-
-            currentStep++;
-            await new Promise((resolve) => setTimeout(resolve, 16));
-          }
-
-          // 最終位置に正確に配置
-          img.style.left = `${clientX - imgRect.width / 2}px`;
-          img.style.top = `${clientY - imgRect.height / 2}px`;
-          img.style.transform = `rotate(0deg) scale(1)`;
-
-          // クリックイベントをシミュレート
-          const mousedownEvent = new MouseEvent("mousedown", {
-            clientX,
-            clientY,
-            bubbles: true,
-            cancelable: true,
-            view: window,
-          });
-          canvas.dispatchEvent(mousedownEvent);
-
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        document.body.removeChild(img);
-      } else {
-        // solutions をrowとcolでソート
-        solutions.sort((a, b) => {
-          if (a[0] === b[0]) {
-            return a[1] - b[1];
-          }
-          return a[0] - b[0];
-        });
-
-        console.log("Sorted solutions:", solutions);
-
-        for (const solution of solutions) {
-          const cell = cells.find((cell) => cell.Row === solution[0] && cell.Col === solution[1]);
-          if (!cell) {
-            console.error("Cell not found for solution:", solution);
-            continue;
-          }
-
-          const centerX = cell.Center.X;
-          const centerY = cell.Center.Y;
-
-          const clientX = centerX / 2;
-          const clientY = centerY / 2;
-
-          // クリックイベントをシミュレート
-          const mousedownEvent = new MouseEvent("mousedown", {
-            clientX,
-            clientY,
-            bubbles: true,
-            cancelable: true,
-            view: window,
-          });
-          canvas.dispatchEvent(mousedownEvent);
-
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
+    for (const [row, col] of solutions) {
+      const cell = cells.find((c) => c.Row === row && c.Col === col);
+      if (!cell) {
+        console.error(`Cell not found for solution: [${row}, ${col}]`);
+        continue;
       }
+
+      const clientX = cell.Center.X / 2;
+      const clientY = cell.Center.Y / 2;
+
+      const mousedownEvent = new MouseEvent("mousedown", {
+        clientX,
+        clientY,
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      });
+      canvas.dispatchEvent(mousedownEvent);
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
+// Initialize on page load
+window.addEventListener("load", async () => {
+  const solver = new AkariSolver();
+
+  const solveButton = new SolveButton(async () => {
+    solveButton.setLoading(true);
+    try {
+      await solver.solve();
+    } catch (error) {
+      console.error("Solve error:", error);
+      alert(`解答に失敗しました: ${error.message}`);
     } finally {
-      // ボタンを再度有効化
-      solveButton.disabled = false;
-      solveButton.style.opacity = "1";
-      solveButton.style.cursor = "pointer";
-      solveButton.innerText = "✨ Solve Akari";
+      solveButton.setLoading(false);
     }
   });
 });

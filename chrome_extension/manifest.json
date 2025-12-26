@@ -17,10 +17,6 @@
       "matches": ["https://dailyakari.com/*"]
     }
   ],
-  "action": {
-    "default_popup": "popup.html"
-  },
-  "permissions": ["storage"],
   "sandbox": {
     "pages": ["sandbox.html"]
   }
