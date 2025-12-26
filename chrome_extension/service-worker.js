@@ -1,23 +1,18 @@
-// content.jsからメッセージを受け取ってfetchを実行し、結果をcontent.jsに返す
+// content.jsからメッセージを受け取って処理し、結果をcontent.jsに返す
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // chrome.runtime.onMessage.addListenerのコールバック関数は async にできないので、即時関数でラップする
   (async () => {
-    const problemData = await fetchProblemData(request.data.problemNo).catch((err) => {
-      console.error("Error fetching problem data:", err);
+    try {
+      if (request.type === "getProblemData") {
+        const problemData = await fetchProblemData(request.problemNo);
+        sendResponse({ problemData });
+      } else if (request.type === "getSolution") {
+        const solutionData = await fetchSolutionData(request.problemData);
+        sendResponse(solutionData);
+      }
+    } catch (err) {
+      console.error("Error:", err);
       sendResponse({ error: err.message });
-    });
-
-    const cellPositionData = await fetchCellPositions(request.data.dataURL, problemData).catch((err) => {
-      console.error("Error fetching cell positions:", err);
-      sendResponse({ error: err.message });
-    });
-
-    const solutionData = await fetchSolutionData(problemData).catch((err) => {
-      console.error("Error fetching answer data:", err);
-      sendResponse({ error: err.message });
-    });
-
-    sendResponse({ ...cellPositionData, ...solutionData });
+    }
   })();
   return true; // 非同期でsendResponseを呼び出すためにtrueを返す
 });
@@ -35,23 +30,6 @@ const fetchProblemData = async (problemNo) => {
   const problemDataText = levelData.split("\n\n")[0];
   const problemData = problemDataText.split("\n").map((line) => line.split(" "));
   return problemData;
-};
-
-const fetchCellPositions = async (dataURL, problemData) => {
-  const body = {
-    image_data_base64: dataURL,
-    problem_data: problemData,
-  };
-
-  const res = await fetch("http://localhost:8080/positions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  return await res.json();
 };
 
 const fetchSolutionData = async (problemData) => {

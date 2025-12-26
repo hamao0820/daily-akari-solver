@@ -1,4 +1,74 @@
 window.addEventListener("load", async () => {
+  // サンドボックスの初期化
+  let sandboxFrame = null;
+  let sandboxReady = false;
+  let sandboxResolvers = new Map();
+  let messageId = 0;
+
+  function initSandbox() {
+    return new Promise((resolve) => {
+      if (sandboxFrame) {
+        if (sandboxReady) {
+          resolve();
+        }
+        return;
+      }
+
+      sandboxFrame = document.createElement("iframe");
+      sandboxFrame.src = chrome.runtime.getURL("sandbox.html");
+      sandboxFrame.style.display = "none";
+
+      // メッセージリスナーを設定
+      window.addEventListener("message", (event) => {
+        if (event.source !== sandboxFrame.contentWindow) return;
+
+        if (event.data.type === "opencv-ready") {
+          sandboxReady = true;
+          console.log("OpenCV ready in sandbox");
+          resolve();
+        } else if (event.data.type === "result") {
+          const resolver = sandboxResolvers.get(event.data.messageId);
+          if (resolver) {
+            resolver.resolve(event.data);
+            sandboxResolvers.delete(event.data.messageId);
+          }
+        } else if (event.data.type === "error") {
+          const resolver = sandboxResolvers.get(event.data.messageId);
+          if (resolver) {
+            resolver.reject(new Error(event.data.message));
+            sandboxResolvers.delete(event.data.messageId);
+          }
+        }
+      });
+
+      document.body.appendChild(sandboxFrame);
+    });
+  }
+
+  function sendToSandbox(message) {
+    return new Promise((resolve, reject) => {
+      if (!sandboxReady) {
+        reject(new Error("Sandbox not ready"));
+        return;
+      }
+
+      const id = messageId++;
+      message.messageId = id;
+
+      sandboxResolvers.set(id, { resolve, reject });
+
+      sandboxFrame.contentWindow.postMessage(message, "*");
+
+      // タイムアウトを設定
+      setTimeout(() => {
+        if (sandboxResolvers.has(id)) {
+          sandboxResolvers.delete(id);
+          reject(new Error("Sandbox timeout"));
+        }
+      }, 30000);
+    });
+  }
+
   const solveButton = document.createElement("button");
   solveButton.innerText = "✨ Solve Akari";
   solveButton.style.position = "fixed";
@@ -50,25 +120,68 @@ window.addEventListener("load", async () => {
     solveButton.innerText = "⏳ Solving...";
 
     try {
+      // サンドボックスを初期化
+      await initSandbox();
+
       // canvasの画像データを取得
       const iframe = document.querySelector("iframe");
       const iframeDocument = iframe.contentDocument;
       const canvas = iframeDocument.querySelector("canvas");
       const dataURL = canvas.toDataURL("image/png");
 
+      // 画像をImageDataに変換
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = dataURL;
+      });
+
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      const ctx = tempCanvas.getContext("2d");
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+
       // URLから問題番号を抽出
       const pageURL = window.location.href;
       const archiveMatch = pageURL.match(/\/archive\/(\d+)/);
       const problemNo = archiveMatch ? parseInt(archiveMatch[1], 10) : -1;
 
-      // service-worker.jsにメッセージを送信
-      const data = {
-        dataURL,
+      // 問題データを取得
+      const problemDataResponse = await chrome.runtime.sendMessage({
+        type: "getProblemData",
         problemNo,
-      };
-      const response = await chrome.runtime.sendMessage({ data });
-      const cells = response.cells;
-      const solutions = response.solution;
+      });
+      const problemData = problemDataResponse.problemData;
+
+      // サンドボックスでセル検出を実行
+      const cellResult = await sendToSandbox({
+        type: "detectCells",
+        imageData: imageData,
+        width: imageData.width,
+        height: imageData.height,
+        rows: problemData.length,
+        cols: problemData[0].length,
+      });
+
+      // セル情報を変換（Go APIのフォーマットに合わせる）
+      const cells = cellResult.cells.map((cell) => ({
+        Row: cell.row,
+        Col: cell.col,
+        Center: {
+          X: cell.centerX,
+          Y: cell.centerY,
+        },
+      }));
+
+      // 解答を取得
+      const solutionResponse = await chrome.runtime.sendMessage({
+        type: "getSolution",
+        problemData,
+      });
+      const solutions = solutionResponse.solution;
 
       if (solveWithFairy) {
         const img = document.createElement("img");
