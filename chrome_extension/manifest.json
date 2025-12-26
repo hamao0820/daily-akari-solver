@@ -21,7 +21,6 @@
     "default_popup": "popup.html"
   },
   "permissions": ["storage"],
-  "host_permissions": ["https://akari-solver.kentakom1213.workers.dev/*"],
   "sandbox": {
     "pages": ["sandbox.html"]
   }
